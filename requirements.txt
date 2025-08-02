@@ -88,7 +88,6 @@ protobuf==5.29.2
 psutil==6.1.1
 pure_eval==0.2.3
 pyarrow==18.1.0
-PyAudio==0.2.14
 pycparser==2.22
 pycryptodome==3.21.0
 pydeck==0.9.1
