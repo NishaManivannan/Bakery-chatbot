@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bake Talks</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: url('https://media.timeout.com/images/101529229/image.jpg') center/cover no-repeat fixed;
+    }
+    .chat-container {
+      max-width: 600px;
+      margin: 60px auto;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 15px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+      padding: 25px;
+      backdrop-filter: blur(3px);
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    h2 {
+      color: #dc143c;
+      margin: 0;
+    }
+    .messages {
+      height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      background: #fffdfd;
+      padding: 12px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+    }
+    .user, .bot {
+      margin: 10px 0;
+      padding: 8px 12px;
+      border-radius: 8px;
+      max-width: 80%;
+    }
+    .user {
+      background: #ffe0eb;
+      color: #000;
+      text-align: right;
+      margin-left: auto;
+    }
+    .bot {
+      background: #f0f0f0;
+      color: #333;
+      text-align: left;
+      margin-right: auto;
+    }
+    input[type="text"] {
+      width: 75%;
+      padding: 12px;
+      font-size: 15px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      outline: none;
+    }
+    button {
+      padding: 12px 18px;
+      font-size: 15px;
+      background: #dc143c;
+      border: none;
+      color: white;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: #810a41;
+    }
+    .btn-home {
+      background: #dc143c;
+    }
+    .btn-home:hover {
+      background: #c01135;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="header">
+      <h2>Bake Talks</h2>
+      <div class="controls">
+        <button class="btn-home" onclick="goHome()">Home</button>
+        <button onclick="toggleMode()" id="modeBtn">Mode: Text</button>
+        <button onclick="startVoiceInput()">Tap to Speak</button>
+      </div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <input type="text" id="input" placeholder="Type your message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+
+  <script>
+    let lastInteraction = Date.now();
+    let voiceMode = false;
+
+    function appendMessage(content, sender) {
+      const messages = document.getElementById("messages");
+      const msgDiv = document.createElement("div");
+      msgDiv.className = sender;
+      msgDiv.innerText = content;
+      messages.appendChild(msgDiv);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function sendMessage(inputText = null) {
+      const inputField = document.getElementById("input");
+      const userText = inputText || inputField.value.trim();
+      if (userText === "") return;
+
+      lastInteraction = Date.now();
+      appendMessage("You: " + userText, "user");
+
+      fetch("/get", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "msg=" + encodeURIComponent(userText) + "&voice=" + voiceMode
+      })
+      .then(response => response.json())
+      .then(data => {
+        appendMessage("Bot: " + data.response, "bot");
+
+        if (data.audio_url) {
+          setTimeout(() => {
+            const audio = new Audio(data.audio_url);
+            audio.playbackRate = 1.5;
+            audio.play()
+              .then(() => console.log("✅ Audio played."))
+              .catch(err => {
+                console.warn(" First play failed, retrying...", err);
+                setTimeout(() => {
+                  const retryAudio = new Audio(data.audio_url);
+                  retryAudio.play()
+                    .then(() => console.log("✅ Retry success"))
+                    .catch(e => console.error("❌ Retry failed", e));
+                }, 500);
+              });
+          }, 300);
+        }
+      });
+
+      inputField.value = "";
+    }
+
+    function goHome() {
+      fetch("/reset", { method: "POST" }).then(() => location.reload());
+    }
+
+    function toggleMode() {
+      voiceMode = !voiceMode;
+      document.getElementById("modeBtn").innerText = "Mode: " + (voiceMode ? "Voice" : "Text");
+    }
+
+    function startVoiceInput() {
+      if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert("Speech recognition not supported in this browser.");
+        return;
+      }
+
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = "en-IN";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.start();
+
+      recognition.onresult = function (event) {
+        const spokenText = event.results[0][0].transcript;
+        document.getElementById("input").value = spokenText;
+        sendMessage(spokenText);
+      };
+
+      recognition.onerror = function (event) {
+        alert("Voice input error: " + event.error);
+      };
+    }
+
+    window.onload = () => {
+      fetch("/get", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "msg=hi"
+      })
+      .then(response => response.json())
+      .then(data => {
+        appendMessage("Bot: " + data.response, "bot");
+      });
+    };
+
+    setInterval(() => {
+      const now = Date.now();
+      if (now - lastInteraction > 5 * 60 * 1000) {
+        fetch("/reset", { method: "POST" }).then(() => location.reload());
+      }
+    }, 60000);
+
+    window.addEventListener("beforeunload", () => {
+      navigator.sendBeacon("/reset");
+    });
+
+    document.getElementById("input").addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+  </script>
+</body>
+</html>
